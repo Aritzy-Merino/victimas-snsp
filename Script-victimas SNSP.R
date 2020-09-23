@@ -14,48 +14,73 @@ p_load(foreign, readxl, tidyverse, plyr, dplyr, tidyr, reshape,scales, zoo)
 
 ############# Datos víctimas ########
 
-setwd("/Users/HP/Documents/Rizika/Víctimas")
+setwd("/Users/aritzy/Documents/Rizika/Víctimas")
 
 library(readxl)
-
-datos <- read_excel("~/Rizika/Víctimas/Estatal-Víctimas-2015-2020_ago2020.xlsx")
+datos <- read_excel("Estatal-Victimas-2015-2020_ago2020.xlsx")
 
 datos_hd <- datos %>% 
   filter(`Subtipo de delito` == "Homicidio doloso")
 
 meses <- colnames(datos_hd)[10:21]
 
-### datos nacionales 
 
-datos_hd <- datos_hd %>% 
+#### Datos nacionales 
+
+datos_nac <- datos_hd %>% 
   group_by(Año) %>% 
   summarise_at(meses[1:12], sum, na.rm = TRUE)
 
-datos_hd <- datos_hd %>% 
+datos_nac <- datos_nac %>% 
   gather(mes, victimas, Enero:Diciembre, factor_key = TRUE)
 
-datos_hd <- datos_hd %>% 
+datos_nac <- datos_nac %>% 
   filter(victimas != 0)
 
-datos_hd$mes <- tolower(datos_hd$mes)
+datos_nac$mes <- tolower(datos_nac$mes)
 
-datos_hd <- datos_hd %>% 
+datos_nac <- datos_nac %>% 
   mutate(fecha = paste0(Año, "-", mes))
 
 library(lubridate)
 
-datos_hd$fecha <- as.yearmon((datos_hd$fecha),"%Y-%b")
+Sys.setlocale("LC_TIME", "es_ES.UTF-8")
 
-graf <- ggplot(datos_hd, aes(fecha, victimas)) +
-  geom_line()+
-  geom_point()+
-  scale_x_yearmon(breaks = datos_hd$fecha, lab = format(datos_hd$fecha, ifelse(cycle(datos_hd$fecha) == 1, "%b\n%Y", "%b")))+
+datos_nac$fecha <- as.yearmon((datos_nac$fecha),"%Y-%b")
+
+datos_victimas <- datos_nac %>% 
+  select(1,2,4,3)
+
+names(datos_victimas)[2] <- "victimas_hd_nacional"
+
+
+#### Gráfica por mes año
+
+graf <- ggplot(datos_nac, aes(fecha, victimas)) +
+  geom_line(color = "#0A2240", size = 1.5)+
+  geom_point(color = "#0A2240", size = 1.5) +
+  geom_smooth(method = "loess", color = "#005E6E")+
+  scale_x_yearmon(breaks = datos_nac$fecha, lab = format(datos_nac$fecha, ifelse(cycle(datos_nac$fecha) == 1, "%b\n%Y", "%b")))+
+  geom_text(data= datos_nac,
+            aes(x = fecha, y = victimas,label= victimas), vjust=-1, size = 2.5) +
   theme_bw() +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
-  labs( 
-    title = "Total de víctimas de homicidio doloso",
-    x= "mes",
+  labs(
+    x= "Mes",
     y = "Total de víctimas") 
+
+#### Promedios
+
+datos_prom <- datos %>% 
+  filter(`Subtipo de delito` == "Homicidio doloso")
+
+meses <- colnames(datos_prom)[10:21]
+
+datos_prom <- datos_prom %>% 
+  group_by(Año) %>% 
+  summarise_at(meses[1:12], sum, na.rm = TRUE)
+
+datos_prom <- aggregate(victimas ~ Año, data= datos_hd, mean)
 
 
 ##### datos para catografía estatal
@@ -69,12 +94,24 @@ datos_estatal <- datos_estatal %>%
 
 datos_estatal$mes <- tolower(datos_estatal$mes)
 
+datos_estatal_2 <- datos_estatal[datos_estatal$Año== "2019" & datos_estatal$mes == "septiembre" | datos_estatal$Año== "2019" & datos_estatal$mes == "octubre" | datos_estatal$Año== "2019" & datos_estatal$mes == "noviembre" | datos_estatal$Año== "2019" & datos_estatal$mes == "diciembre" | datos_estatal$Año== "2020",]
 
-datos_estatal <- datos_estatal[datos_estatal$Año== "2019" & datos_estatal$mes == "septiembre" | datos_estatal$Año== "2019" & datos_estatal$mes == "octubre" | datos_estatal$Año== "2019" & datos_estatal$mes == "noviembre" | datos_estatal$Año== "2019" & datos_estatal$mes == "diciembre" | datos_estatal$Año== "2020",]
+datos_estatal_1 <- aggregate(victimas ~ Año + Entidad, sum, data = datos_estatal)
 
-datos_estatal <- aggregate(victimas ~ Entidad, sum, data = datos_estatal)
+datos_estatal_1 <- datos_estatal_1 %>% 
+  filter(Año < 2020)
 
-datos_estatal <- datos_estatal %>% 
+datos_estatal_1 <- datos_estatal_1 %>% 
+  spread(Año, victimas) %>% 
+  group_by(Entidad)
+
+datos_estatal_2 <- aggregate(victimas ~ Entidad, sum, data = datos_estatal_2)
+
+names(datos_estatal_2)[2] <- "2020"
+
+datos_estatal_fin <- left_join(datos_estatal_1, datos_estatal_2, by = "Entidad")
+
+datos_estatal_fin <- datos_estatal_fin %>% 
   mutate(NUM_EDO = ifelse(Entidad == "Aguascalientes", "01",
                           ifelse(Entidad == "Baja California", "02", 
                                  ifelse(Entidad == "Baja California Sur", "03",
@@ -110,13 +147,13 @@ datos_estatal <- datos_estatal %>%
 
 
 
-###Sacamos tasas
+###Sacamos tasas (PENDIENTE DE SUBIR POBLACIÓN)
 
 datos_pob <- read_excel("~/Rizika/pob-geo/pob_estatal_2020.xlsx")
 
-datos_estatal <- left_join(datos_estatal, datos_pob, by = "Entidad")
+datos_estatal_fin <- left_join(datos_estatal_fin, datos_pob, by = "Entidad")
 
-datos_estatal <- datos_estatal %>% 
+datos_estatal_fin <- datos_estatal_fin %>% 
   select(3, 1, 2, 5)
 
 datos_estatal <- datos_estatal %>% 
@@ -129,7 +166,8 @@ p_load(BAMMtools)
 jenks_victimas <- getJenksBreaks(datos_estatal$tasa_victimas, 6)
 
 as.data.frame(jenks_victimas)
-###### Cartografía#####
+
+###### Cartografía###
 p_load(rgdal)
 
 cartografia_estatal <- readOGR(dsn="/Users/HP/Documents/Rizika/pob-geo/estados_mex", layer= "destdv250k_2gw")
@@ -137,3 +175,13 @@ cartografia_estatal <- readOGR(dsn="/Users/HP/Documents/Rizika/pob-geo/estados_m
 carto_anual <- merge(cartografia_estatal, datos_estatal, by.x="NUM_EDO", by.y="NUM_EDO")
 
 carto_anual_victimas <- writeOGR(carto_anual, "carto_anual_victimas.GeoJSON", layer = "carto_anual", driver="GeoJSON")
+
+
+###### Datos fuero federal #####
+
+datos_fuero <- read_excel("~/Documents/Rizika/Fuero federal/INCIDENCIA DEL FUERO FEDERAL 2012 - 2020.xlsx")
+
+lista_fuero <- datos_fuero %>% 
+  select(5,6) %>% 
+  group_by(CONCEPTO, TIPO) %>% 
+  count()
